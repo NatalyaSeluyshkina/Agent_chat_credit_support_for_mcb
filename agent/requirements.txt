@@ -1,0 +1,7 @@
+# Зависимости слоя Участника 2 (граф + tools + эскалация).
+# RAG-слой Участника 1 ставит свои зависимости отдельно (rag/requirements.txt:
+# chromadb, numpy, python-dotenv, langchain-gigachat).
+
+langgraph>=0.2
+langchain-core>=0.3
+langchain-gigachat>=0.5   # нужен только для боевого режима (agent/llm.py)
