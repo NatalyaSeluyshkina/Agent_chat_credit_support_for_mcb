@@ -24,7 +24,21 @@ from agent.escalation import (
     simulate_handoff,
 )
 from agent.state import AgentState, latest_client_text, to_rag_case
-from agent.tools import get_active_loans, get_applications, get_client_info
+from agent.tools import (
+    get_active_loans,
+    get_applications,
+    get_client_info,
+    get_eligible_products,
+)
+
+# Маркеры запроса о доступности продуктов (подкатегория tx_eligible_products) —
+# тогда дополнительно считаем детерминированный подбор get_eligible_products.
+_ELIGIBILITY_MARKERS = (
+    "доступн", "подойдёт", "подойдет", "подойдут", "могу рассчитывать",
+    "на какие продукт", "какие продукт", "какие кредиты мне", "что мне доступно",
+    "что у вас есть", "могу взять", "могу ли я взять", "мне он подойдёт",
+    "рассчитывать на кредит", "что мне подходит",
+)
 
 # Хелперы Участника 1.
 from rag import build_query_from_history, detect_product
@@ -106,6 +120,10 @@ def query_db_node(state: AgentState, deps: GraphDeps) -> dict:
         "loans": get_active_loans(authorized_id, deps.db_path),
         "applications": get_applications(authorized_id, deps.db_path),
     }
+    # Запрос о доступности продуктов — добавляем детерминированный подбор (п. 4.1):
+    # скоринг гатит доступ, но в результат попадают только нескоринговые причины.
+    if any(marker in latest_client_text(state).lower() for marker in _ELIGIBILITY_MARKERS):
+        tool_results["eligible_products"] = get_eligible_products(authorized_id, deps.db_path)
     return {"tool_results": tool_results}
 
 

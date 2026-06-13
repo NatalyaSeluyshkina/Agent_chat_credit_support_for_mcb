@@ -53,7 +53,9 @@
 
 - `transactional` — про КОНКРЕТНОГО клиента и его данные: статус его заявки,
   состояние его кредита, его платежи/остаток, расчёт его досрочного погашения, какие
-  продукты доступны именно ему. Ставь `needs_db = true`, `needs_rag = true`.
+  продукты доступны именно ему, **подойдёт ли ЕМУ конкретный продукт** («мне
+  подойдёт?», «я подхожу под…», «могу ли я взять X»). Ставь `needs_db = true`,
+  `needs_rag = true`.
 - `info` — общие вопросы об условиях, продуктах, требованиях, документах, процессах,
   досрочке, реструктуризации (без привязки к данным клиента). `needs_rag = true`.
 - `edge_conflict` — вопрос на стыке общего и продуктового регламента (срок счёта,
@@ -128,6 +130,48 @@
 
 «Расскажи анекдот про программистов»
 {"category":"offtopic","escalation_trigger":null,"needs_db":false,"needs_rag":false,"detected_product":null,"negative_markers":[]}
+```
+
+### Жёсткие случаи (частые ошибки — разбери внимательно)
+
+```
+# Вопрос об УСЛОВИЯХ повторной подачи после отказа — это статус/процедура по СВОЕЙ
+# заявке (transactional), НЕ намерение. Триггера intent нет.
+«Я хочу подать заявку, но мне уже отказывали. Через сколько можно?»
+{"category":"transactional","escalation_trigger":null,"needs_db":true,"needs_rag":true,"detected_product":null,"negative_markers":[]}
+
+«После отказа когда я могу заново подать?»
+{"category":"transactional","escalation_trigger":null,"needs_db":true,"needs_rag":true,"detected_product":null,"negative_markers":[]}
+
+«Почему мне отказали по заявке?»
+{"category":"transactional","escalation_trigger":null,"needs_db":true,"needs_rag":false,"detected_product":null,"negative_markers":[]}
+
+# «Какие продукты МНЕ доступны / на что я могу рассчитывать» — про конкретного
+# клиента (нужен его профиль), это transactional, НЕ info и НЕ намерение.
+«Какие у вас кредиты мне доступны?»
+{"category":"transactional","escalation_trigger":null,"needs_db":true,"needs_rag":true,"detected_product":null,"negative_markers":[]}
+
+«На какие продукты я могу рассчитывать?»
+{"category":"transactional","escalation_trigger":null,"needs_db":true,"needs_rag":true,"detected_product":null,"negative_markers":[]}
+
+# «Подойдёт ли МНЕ конкретный продукт» — оценка по профилю клиента (transactional),
+# даже если начинается с «хочу узнать». Это НЕ намерение и НЕ общий info.
+«Хочу узнать про Бизнес-Старт, мне он подойдёт?»
+{"category":"transactional","escalation_trigger":null,"needs_db":true,"needs_rag":true,"detected_product":"BUSINESS_START","negative_markers":[]}
+
+# Сравни: тот же смысл БЕЗ привязки к клиенту — это info (общие условия).
+«Какие кредиты вы даёте малому бизнесу?»
+{"category":"info","escalation_trigger":null,"needs_db":false,"needs_rag":true,"detected_product":null,"negative_markers":[]}
+
+# ВАЖНО разграничение (п. 4.2.3): общий вопрос «могу ли я В ПРИНЦИПЕ рассчитывать»
+# или «можно ли в принципе подать» — это info (общая возможность), НЕ transactional
+# и НЕ намерение. transactional — только когда нужен ИМЕННО профиль клиента
+# («какие МНЕ доступны», «подойдёт ли мне Бизнес-Старт»).
+«Бизнесу полгода. Могу я в принципе на что-то у вас рассчитывать?»
+{"category":"info","escalation_trigger":null,"needs_db":false,"needs_rag":true,"detected_product":null,"negative_markers":[]}
+
+«Можно ли досрочно погасить оборотный кредит без комиссии?»
+{"category":"info","escalation_trigger":null,"needs_db":false,"needs_rag":true,"detected_product":"BUSINESS_OBOROT","negative_markers":[]}
 ```
 
 ## Формат ответа

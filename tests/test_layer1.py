@@ -9,7 +9,15 @@ from agent.auth import (
     ensure_self_access,
     resolve_client,
 )
-from agent.tools import CLIENT_TOOLS, get_active_loans, get_applications, get_client_info
+import datetime
+
+from agent.tools import (
+    CLIENT_TOOLS,
+    get_active_loans,
+    get_applications,
+    get_client_info,
+    get_eligible_products,
+)
 
 
 def section(title: str) -> None:
@@ -117,9 +125,32 @@ def test_langchain_tools() -> None:
     print("OK: client_info_tool.invoke вернул профиль.")
 
 
+def test_eligible_products() -> None:
+    section("Детерминированный подбор продуктов (get_eligible_products)")
+    today = datetime.date(2026, 6, 12)
+
+    def eligible_codes(client_id: str) -> set[str]:
+        res = get_eligible_products(client_id, today=today)
+        return {p["code"] for p in res["products"] if p["eligible"]}
+
+    # C-000011 (ИП, выручка 5 млн < 6 млн): Бизнес-Оборот недоступен, Бизнес-Старт — да.
+    codes = eligible_codes("C-000011")
+    assert "BUSINESS_OBOROT" not in codes, "Оборот не должен проходить при выручке < 6 млн"
+    assert "BUSINESS_START" in codes, "Бизнес-Старт должен подходить"
+
+    # C-000007 (основной ОКВЭД 64 — финансы): Бизнес-Старт закрыт по отрасли (п. 2.4.4).
+    assert "BUSINESS_START" not in eligible_codes("C-000007"), "Старт закрыт для ОКВЭД 64"
+
+    # Скоринг НЕ должен утекать в причины (п. 6.2): ни буквы рейтинга, ни «скоринг=».
+    dump = str(get_eligible_products("C-000020", today=today))
+    assert "скоринг=" not in dump.lower() and "credit_score" not in dump
+    print("OK: подбор по порогам корректен, значение скоринга не раскрывается.")
+
+
 if __name__ == "__main__":
     test_auth()
     test_access_control()
     test_tools()
     test_langchain_tools()
+    test_eligible_products()
     print("\nВсе проверки слоя 1 пройдены.")

@@ -176,12 +176,12 @@ def evaluate(
             bucket["citation_total"] += 1
             bucket["citation_hits"] += int(citation_ok)
 
-        # LLM-судья (опционально).
+        # LLM-судья (опционально, градуированная оценка 0/0.5/1).
         judge_ok = None
         if judge_fn is not None:
             judge_ok = judge_fn(case, observed)
             bucket["judge_total"] += 1
-            bucket["judge_hits"] += int(judge_ok)
+            bucket["judge_hits"] += judge_ok  # сумма дробных баллов
 
         per_case.append({
             "id": case["id"],
@@ -280,21 +280,25 @@ def print_summary(summary: dict) -> None:
 # --- LLM-судья (опционально, gigachat-режим) -----------------------------------
 
 def make_judge():
-    """Собрать LLM-судью на GigaChat: соответствует ли ответ expected_behavior."""
+    """
+    Собрать LLM-судью на GigaChat. Градуированная оценка (0 / 0.5 / 1), чтобы
+    отличать «по сути верно, но неполно» от провала и снизить шум бинарной метрики.
+    """
     from langchain_core.messages import HumanMessage, SystemMessage
 
     from agent.llm import build_gigachat_chat
 
     chat = build_gigachat_chat(temperature=0.0)
     system = (
-        "Ты — строгий оценщик качества ответов банковского Помощника по кредитованию МСБ. "
-        "Тебе дают ожидаемое поведение и фактический ответ. Оцени, выполняет ли ответ "
-        "ожидаемое поведение по сути (факты, корректный отказ/эскалация, отсутствие "
-        "выдумок и нарушений ограничений). Верни ТОЛЬКО JSON: "
-        '{"pass": true|false, "reason": "коротко"}.'
+        "Ты — оценщик качества ответов банковского Помощника по кредитованию МСБ. "
+        "Тебе дают ожидаемое поведение и фактический ответ. Оцени соответствие по сути "
+        "(факты, корректный отказ/эскалация, отсутствие выдумок и нарушений ограничений) "
+        "по шкале: 1.0 — выполнено; 0.5 — по сути верно, но неполно/с мелкими огрехами; "
+        "0.0 — не выполнено/выдумка/нарушение. Верни ТОЛЬКО JSON: "
+        '{"score": 1.0|0.5|0.0, "reason": "коротко"}.'
     )
 
-    def judge(case: dict, observed: dict) -> bool:
+    def judge(case: dict, observed: dict) -> float:
         user = (
             f"Вопрос клиента: {case.get('question') or '(см. историю диалога)'}\n"
             f"Ожидаемое поведение: {case.get('expected_behavior')}\n"
@@ -305,9 +309,10 @@ def make_judge():
         try:
             response = chat.invoke([SystemMessage(content=system), HumanMessage(content=user)])
             data = json.loads(response.content.replace("```json", "").replace("```", "").strip())
-            return bool(data.get("pass"))
+            score = float(data.get("score", 0.0))
+            return min(max(score, 0.0), 1.0)
         except Exception:  # noqa: BLE001 — судья не должен ронять прогон
-            return False
+            return 0.0
 
     return judge
 
@@ -348,7 +353,7 @@ def main() -> None:
     parser.add_argument("--qa", type=Path, default=DEFAULT_QA)
     parser.add_argument("--index-dir", default="rag/index")
     parser.add_argument("--db-path", default=None)
-    parser.add_argument("--top-k", type=int, default=5)
+    parser.add_argument("--top-k", type=int, default=8)
     parser.add_argument("--judge", action="store_true",
                         help="Включить LLM-судью (только gigachat-режим).")
     parser.add_argument("--categories", default=None,

@@ -169,6 +169,19 @@ def _format_tool_results(tool_results: dict) -> str:
             # decision_reason_category НЕ включаем — это скоринг-чувствительно (п. 6.2).
             lines.append(row)
 
+    elig = tool_results.get("eligible_products")
+    if elig and elig.get("products"):
+        seg = {"micro": "микробизнес", "small": "малый бизнес",
+               "out_of_segment": "вне сегмента МСБ"}.get(elig.get("segment"), "")
+        lines.append(f"Подбор продуктов (по порогам регламента, сегмент: {seg}):")
+        if elig.get("stop_factors"):
+            lines.append("  Стоп-факторы (блокируют всё): " + "; ".join(elig["stop_factors"]))
+        for p in elig["products"]:
+            if p["eligible"]:
+                lines.append(f"  ✓ {p['name']} — соответствует базовым требованиям")
+            else:
+                lines.append(f"  ✗ {p['name']} — " + "; ".join(p["reasons"]))
+
     return "\n".join(lines)
 
 
@@ -225,7 +238,7 @@ def make_gigachat_generator(chat=None) -> Callable[[AgentState], str]:
     Генератор ответа на GigaChat. Возвращает функцию для GraphDeps.generate_fn.
     Подмешивает правило разрешения коллизий Участника 1.
     """
-    chat = chat or build_gigachat_chat(temperature=0.2)
+    chat = chat or build_gigachat_chat(temperature=0.0)
     # Системный промпт = общая роль/ограничения (3.1) + инструкция по задаче генерации (3.3).
     system_prompt = _read(PROMPTS_DIR / "system_prompt.md") + "\n\n---\n\n" + _read(PROMPTS_DIR / "generate.md")
     collision_rule = load_collision_rule()
@@ -239,7 +252,8 @@ def make_gigachat_generator(chat=None) -> Callable[[AgentState], str]:
         # Данные клиента — АВТОРИТЕТНЫЙ источник, идут первыми и важнее нормативки
         # для запросов о статусе/состоянии (иначе модель отправляет в интернет-банк).
         has_data = bool(tool_results) and not tool_results.get("access_denied") and (
-            tool_results.get("profile") or tool_results.get("loans") or tool_results.get("applications")
+            tool_results.get("profile") or tool_results.get("loans")
+            or tool_results.get("applications") or tool_results.get("eligible_products")
         )
         if has_data:
             user_parts.append(
@@ -277,7 +291,7 @@ def make_gigachat_generator(chat=None) -> Callable[[AgentState], str]:
 def make_gigachat_deps(
     index_dir: str = "rag/index",
     db_path: Optional[str] = None,
-    top_k: int = 5,
+    top_k: int = 8,
     escalation_log_path: Optional[str] = None,
 ) -> GraphDeps:
     """

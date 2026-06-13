@@ -11,7 +11,7 @@
 ```
 agent/
   db.py          # read-only доступ к clients.sqlite
-  tools.py       # 2.1 — get_client_info / get_active_loans / get_applications (+ LangChain-обёртки)
+  tools.py       # 2.1 — get_client_info / get_active_loans / get_applications / get_eligible_products (+ LangChain-обёртки)
   auth.py        # 2.2 — resolve_client (доступ = функция канала), ensure_self_access
   state.py       # 2.3 — AgentState (TypedDict + add_messages), seed/конвертация диалога
   nodes.py       # 2.4 — узлы classify / retrieve_rag / query_db / generate_answer / escalate
