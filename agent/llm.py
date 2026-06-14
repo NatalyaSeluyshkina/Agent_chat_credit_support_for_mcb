@@ -272,6 +272,23 @@ def make_gigachat_generator(chat=None) -> Callable[[AgentState], str]:
             tool_results.get("profile") or tool_results.get("loans")
             or tool_results.get("applications") or tool_results.get("eligible_products")
         )
+
+        # Жёсткая защита от выдумок при отсутствии грунтинга (п. 6.3, 4.4.3). Если вопрос
+        # требует нормативной базы, но RAG не вернул контекст (сбой эмбеддингов/ретривера,
+        # напр. HTTP 402 — retrieve_rag деградирует в пустой контекст) И нет авторитетных
+        # данных клиента — НЕ зовём модель «по памяти»: без контекста она фабрикует
+        # несуществующие продукты и номера документов (наблюдалось в UI: «Экспресс-Кредит»,
+        # «Документ № 101-БС»). Вместо догадки — честная деградация.
+        needs_grounding = bool(state.get("needs_rag")) or state.get("category") in {"info", "edge_conflict"}
+        if (needs_grounding and not context and not has_data
+                and not tool_results.get("access_denied")):
+            logger.warning("generate: нет RAG-контекста и данных клиента — "
+                           "безопасная деградация вместо догадки (грунтинг недоступен).")
+            return ("Сейчас не получается обратиться к нормативной базе банка, поэтому я не "
+                    "стану называть продукты и условия по памяти, чтобы не ввести вас в "
+                    "заблуждение. Пожалуйста, повторите вопрос чуть позже — отвечу строго "
+                    "по действующим документам.")
+
         if has_data:
             user_parts.append(
                 "\n=== ДАННЫЕ КЛИЕНТА (из БД банка, АВТОРИТЕТНЫЙ ИСТОЧНИК) ===\n"
