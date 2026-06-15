@@ -12,3 +12,6 @@ venv/
 
 # Runtime: персистентность диалогов UI (SqliteSaver)
 ui/.sessions/
+
+# Office временные lock-файлы
+~$*
