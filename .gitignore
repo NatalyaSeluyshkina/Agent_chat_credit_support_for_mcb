@@ -9,3 +9,6 @@ venv/
 
 # OS
 .DS_Store
+
+# Runtime: персистентность диалогов UI (SqliteSaver)
+ui/.sessions/

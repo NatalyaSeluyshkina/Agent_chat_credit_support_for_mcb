@@ -1,0 +1,5 @@
+# Наблюдаемость графа через Arize Phoenix (опционально, см. OBSERVABILITY.md).
+# Ставится отдельно от основного приложения — нужно только для трейсинга/отладки.
+arize-phoenix>=17.5,<18           # сервер + UI + коллектор (python -m phoenix.server.main serve)
+arize-phoenix-otel>=0.16           # register() — настройка OpenTelemetry на Phoenix
+openinference-instrumentation-langchain>=0.1.66   # трейсинг LangChain/LangGraph + GigaChat
