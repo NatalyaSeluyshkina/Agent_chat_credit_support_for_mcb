@@ -300,7 +300,12 @@ def make_gigachat_generator(chat=None) -> Callable[[AgentState], str]:
         # данных клиента — НЕ зовём модель «по памяти»: без контекста она фабрикует
         # несуществующие продукты и номера документов (наблюдалось в UI: «Экспресс-Кредит»,
         # «Документ № 101-БС»). Вместо догадки — честная деградация.
-        needs_grounding = bool(state.get("needs_rag")) or state.get("category") in {"info", "edge_conflict"}
+        # Грунтинг требуется ТОЛЬКО если классификатор запросил RAG (needs_rag=True),
+        # но контекст пуст — это реальный сбой эмбеддингов/ретривера (риск выдумок).
+        # НЕ привязываемся к category=info: часть info-вопросов (напр. о работе самого
+        # ассистента — «в каких случаях переводишь на менеджера») классификатор
+        # помечает needs_rag=False и отвечает из системного промпта; деградация там ложная.
+        needs_grounding = bool(state.get("needs_rag"))
         if (needs_grounding and not context and not has_data
                 and not tool_results.get("access_denied")):
             logger.warning("generate: нет RAG-контекста и данных клиента — "
