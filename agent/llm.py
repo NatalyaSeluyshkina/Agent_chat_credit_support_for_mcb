@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import time
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -74,6 +75,26 @@ def load_collision_rule() -> str:
 def _strip_fences(text: str) -> str:
     """Убрать markdown-ограждения ```json ... ``` из ответа LLM."""
     return text.replace("```json", "").replace("```", "").strip()
+
+
+def _invoke_retry(chat, messages, attempts: int = 3):
+    """
+    Вызвать chat.invoke с ретраем транзиентных сбоев (SSL EOF, кратковременные 5xx).
+
+    Без ретрая короткий обрыв соединения с GigaChat ронял classify на baseline и
+    обнулял RAG-генерацию (наблюдалось в UI). Ретраим только сетевой вызов; парсинг
+    ответа делает вызывающий код. Если все попытки провалились — пробрасываем
+    исключение, чтобы сработал штатный откат (baseline/шаблон).
+    """
+    last_exc: Exception | None = None
+    for attempt in range(attempts):
+        try:
+            return chat.invoke(messages)
+        except Exception as exc:  # noqa: BLE001
+            last_exc = exc
+            if attempt < attempts - 1:
+                time.sleep(0.6 * (attempt + 1))  # 0.6s, 1.2s бэкофф
+    raise last_exc
 
 
 def build_gigachat_chat(model: str = "GigaChat", temperature: float = 0.0):
@@ -201,13 +222,13 @@ def make_gigachat_classifier(chat=None) -> Callable[[AgentState], dict]:
             "Верни ТОЛЬКО JSON по схеме из инструкции, без markdown и пояснений."
         )
         try:
-            response = chat.invoke([
+            response = _invoke_retry(chat, [
                 SystemMessage(content=system_prompt),
                 HumanMessage(content=user_prompt),
             ])
             data = json.loads(_strip_fences(response.content))
         except Exception as exc:  # noqa: BLE001 — любой сбой → безопасный откат
-            logger.warning("classify: сбой GigaChat/JSON (%s) — откат на baseline.", exc)
+            logger.warning("classify: сбой GigaChat/JSON после ретраев (%s) — откат на baseline.", exc)
             return rule_based_classify(state)
 
         category = data.get("category")
@@ -310,13 +331,13 @@ def make_gigachat_generator(chat=None) -> Callable[[AgentState], str]:
         user_parts.append("\nОтветь кратко и точно, цитируя источники (документ#пункт).")
 
         try:
-            response = chat.invoke([
+            response = _invoke_retry(chat, [
                 SystemMessage(content=system_prompt),
                 HumanMessage(content="\n".join(user_parts)),
             ])
             return response.content
         except Exception as exc:  # noqa: BLE001
-            logger.warning("generate: сбой GigaChat (%s) — откат на шаблон.", exc)
+            logger.warning("generate: сбой GigaChat после ретраев (%s) — откат на шаблон.", exc)
             return template_generate(state)
 
     return generate
