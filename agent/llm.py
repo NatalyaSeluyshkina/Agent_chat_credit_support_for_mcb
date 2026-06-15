@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import time
 from pathlib import Path
 from typing import Callable, Optional
@@ -75,6 +76,28 @@ def load_collision_rule() -> str:
 def _strip_fences(text: str) -> str:
     """Убрать markdown-ограждения ```json ... ``` из ответа LLM."""
     return text.replace("```json", "").replace("```", "").strip()
+
+
+# Внутренние идентификаторы нормативки (имена файлов, номера пунктов) — служебные
+# ссылки; клиенту их показывать не нужно. Чистим ИТОГОВЫЙ ответ генератора. Источники
+# остаются в scope_tags (dev-режим / аудит / метрика citation) — там их не трогаем.
+_DOC_FILE_RE = re.compile(r"\b\d{1,2}_[A-Za-zА-Яа-я_]+\.md(?:#[\d.]+)?")
+_TRAILING_CLAUSE_RE = re.compile(
+    r"\s*[—–\-,]?\s*п\.?\s*\d+(?:\.\d+)*(?:\s*[—–\-]\s*\d+(?:\.\d+)*)?\s*(?=\))", re.I)
+
+
+def _strip_internal_refs(text: str) -> str:
+    """Убрать из ответа клиенту служебные ссылки на внутренние документы/пункты."""
+    if not text:
+        return text
+    text = _DOC_FILE_RE.sub("", text)                 # 03_early_repayment.md#1.3
+    text = re.sub(r"документ#пункт", "", text, flags=re.I)
+    text = _TRAILING_CLAUSE_RE.sub("", text)          # висящий «(... — п. 4.2.3 )»
+    text = re.sub(r"\(\s*\)", "", text)               # пустые скобки
+    text = re.sub(r"\s+([.,;:)])", r"\1", text)        # пробел перед пунктуацией
+    text = re.sub(r"\(\s+", "(", text)
+    text = re.sub(r"[ \t]{2,}", " ", text)
+    return text.strip()
 
 
 def _invoke_retry(chat, messages, attempts: int = 3):
@@ -333,14 +356,15 @@ def make_gigachat_generator(chat=None) -> Callable[[AgentState], str]:
             label = ("Нормативка (для процедур/условий; по статусу/остатку приоритет "
                      "у данных клиента выше)") if has_data else "Источники из базы знаний"
             user_parts.append(f"\n{label}:\n{context}")
-        user_parts.append("\nОтветь кратко и точно, цитируя источники (документ#пункт).")
+        user_parts.append("\nОтветь кратко и точно по источникам. НЕ указывай в ответе "
+                          "имена внутренних документов/файлов и номера их пунктов.")
 
         try:
             response = _invoke_retry(chat, [
                 SystemMessage(content=system_prompt),
                 HumanMessage(content="\n".join(user_parts)),
             ])
-            return response.content
+            return _strip_internal_refs(response.content)
         except Exception as exc:  # noqa: BLE001
             logger.warning("generate: сбой GigaChat после ретраев (%s) — откат на шаблон.", exc)
             return template_generate(state)
