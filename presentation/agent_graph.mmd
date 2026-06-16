@@ -1,0 +1,27 @@
+%% Граф агента (LangGraph). Рёбра соответствуют build_graph в agent/graph.py.
+graph TD
+    start([Обращение клиента]) --> classify
+
+    classify["classify<br/>классификация + детекторы<br/>безопасности"]
+    classify -.->|escalation / манипуляция| escalate
+    classify -.->|needs_db| query_db
+    classify -.->|needs_rag| retrieve_rag
+    classify -.->|без RAG и БД| generate_answer
+
+    query_db["query_db<br/>данные клиента (SQLite)"]
+    query_db -.->|needs_rag| retrieve_rag
+    query_db -.-> generate_answer
+
+    retrieve_rag["retrieve_rag<br/>поиск по нормативке (RAG)"]
+    retrieve_rag --> generate_answer
+
+    generate_answer["generate_answer<br/>ответ + грунтинг в источниках"]
+    escalate["escalate<br/>пакет для оператора"]
+
+    generate_answer --> done([Ответ клиенту])
+    escalate --> done
+
+    classDef node fill:#EAF5EC,stroke:#2E7D32,color:#1B3A22;
+    classDef term fill:#2E7D32,stroke:#1B3A22,color:#fff;
+    class classify,query_db,retrieve_rag,generate_answer,escalate node;
+    class start,done term;

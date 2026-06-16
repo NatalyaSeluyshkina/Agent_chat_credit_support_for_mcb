@@ -1,0 +1,22 @@
+%% Структура RAG. Индексация (офлайн) + поиск (на запросе).
+graph LR
+    subgraph index["Индексация (один раз)"]
+        docs["5 нормативных<br/>документов .md"] --> chunker["Chunker<br/>section-aware<br/>doc_id + section_id + scope"]
+        chunker --> corpus["corpus_chunks.jsonl"]
+        corpus --> emb["GigaChat Embeddings<br/>1024-dim"]
+        emb --> store[("Chroma<br/>HNSW · cosine")]
+    end
+
+    subgraph search["Поиск (на каждом запросе)"]
+        q["Запрос клиента"] --> qemb["Embeddings запроса"]
+        qemb --> retr["retrieve(query, k=8)<br/>+ product_filter"]
+        retr --> ctx["top-k чанков<br/>с тегами scope: general / specific"]
+        ctx --> gen["generate_answer<br/>приоритет продуктового правила<br/>при коллизии"]
+    end
+
+    store -.->|векторный поиск| retr
+
+    classDef box fill:#EAF5EC,stroke:#2E7D32,color:#1B3A22;
+    classDef db fill:#2E7D32,stroke:#1B3A22,color:#fff;
+    class docs,chunker,corpus,emb,q,qemb,retr,ctx,gen box;
+    class store db;
